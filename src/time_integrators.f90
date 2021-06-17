@@ -35,7 +35,7 @@ module time_integrators
   implicit none
 
   private
-  public :: int_time
+  public :: int_time, intt
 
 contains
 
@@ -200,6 +200,7 @@ contains
     USE param, ONLY : ntime, nrhotime, ilmn, iscalar, ilmn_solve_temp,itimescheme
     USE param, ONLY : iimplicit, sc_even
     USE param, ONLY : primary_species, massfrac
+    USE param, ONLY : ilevelset
     use param, only : scalar_lbound, scalar_ubound
     USE variables, ONLY : numscalar,nu0nu
     USE var, ONLY : ta1, tb1
@@ -235,7 +236,7 @@ contains
        ENDIF
 
        DO is = 1, numscalar
-          IF (is.NE.primary_species) THEN
+          IF ((is.NE.primary_species).and.(is.ne.ilevelset)) THEN
              IF (iimplicit.ge.1) then
                 if (sc_even(is)) then
                    k = 1

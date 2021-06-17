@@ -48,6 +48,7 @@ module case
   use tbl
   use abl
   use uniform
+  use rayleigh_taylor
 
   use var, only : nzmsize
 
@@ -131,6 +132,10 @@ contains
 
        call init_uniform (ux1, uy1, uz1, ep1, phi1)
 
+    elseif (itype.eq.itype_rt) then
+
+       call init_rt (rho1,ux1, uy1, uz1, ep1, phi1)
+
     endif
 
     !! Setup old arrays
@@ -204,6 +209,10 @@ contains
 
        call boundary_conditions_uniform (ux, uy, uz, phi)
 
+    elseif (itype.eq.itype_rt) then
+
+       call boundary_conditions_rt (ux, uy, uz, phi,ep)
+
     endif
 
   end subroutine boundary_conditions
@@ -257,7 +266,7 @@ contains
     T=0.
     ! Recover temperature when decomposed (pressure to be recovered externally)
     if (itype.eq.itype_abl.and.ibuoyancy.eq.1) then
-      do j=1,xsize(2) 
+      do j=1,xsize(2)
         T(:,j,:,1)=phi1(:,j,:,1)+Tstat(j,1)
       enddo
     else
@@ -271,12 +280,12 @@ contains
     call postprocess_case(rho1, ux1, uy1, uz1, pp3, T, ep1)
     call overall_statistic(ux1, uy1, uz1, T, pp3, ep1)
 
-    if (iturbine.ne.0) then 
+    if (iturbine.ne.0) then
       call turbine_output()
     endif
 
     call write_probes(ux1, uy1, uz1, pp3, phi1)
-    
+
   end subroutine postprocessing
   !##################################################################
   !##################################################################

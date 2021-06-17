@@ -31,8 +31,9 @@
 !################################################################################
 module transeq
 
+  use weno, only : weno5
   private
-  public :: calculate_transeq_rhs
+  public :: calculate_transeq_rhs, update_freesurface
 
 contains
   !############################################################################
@@ -103,6 +104,8 @@ contains
 
     use case, only : momentum_forcing
 
+    use freesurface, only : surface_tension_force
+
     implicit none
 
     !! INPUTS
@@ -160,7 +163,7 @@ contains
     call transpose_x_to_y(uy1,uy2)
     call transpose_x_to_y(uz1,uz2)
 
-    if (ilmn) then
+    if (ilmn.or.ifreesurface) then
        call transpose_x_to_y(rho1(:,:,:,1),rho2)
        call transpose_x_to_y(mu1,mu2)
     else
@@ -209,7 +212,7 @@ contains
     call transpose_y_to_z(uz2,uz3)
 
     !WORK Z-PENCILS
-    if (ilmn) then
+    if (ilmn.or.ifreesurface) then
        call transpose_y_to_z(rho2,rho3)
        call transpose_y_to_z(mu2,mu3)
 
@@ -259,6 +262,12 @@ contains
     td3(:,:,:) = ta3(:,:,:)
     te3(:,:,:) = tb3(:,:,:)
     tf3(:,:,:) = tc3(:,:,:)
+
+    if (ifreesurface) then
+       td3(:,:,:) = rho3(:,:,:) * td3(:,:,:)
+       te3(:,:,:) = rho3(:,:,:) * te3(:,:,:)
+       tf3(:,:,:) = rho3(:,:,:) * tf3(:,:,:)
+   endif
 
     !DIFFUSIVE TERMS IN Z
     call derzz (ta3,ux3,di3,sz,sfzp,sszp,swzp,zsize(1),zsize(2),zsize(3),1)
@@ -358,11 +367,11 @@ contains
           enddo
 
        else
-       
+
           td2(:,:,:) = zero
           te2(:,:,:) = zero
           tf2(:,:,:) = zero
-          
+
        endif
     endif
 
@@ -402,7 +411,7 @@ contains
     duy1(:,:,:,1) = tb1(:,:,:) - half*th1(:,:,:)  + te1(:,:,:)
     duz1(:,:,:,1) = tc1(:,:,:) - half*ti1(:,:,:)  + tf1(:,:,:)
 
-    if (ilmn) then
+    if (ilmn.or.ifreesurface) then
        call momentum_full_viscstress_tensor(dux1(:,:,:,1), duy1(:,:,:,1), duz1(:,:,:,1), divu3, mu1)
     endif
 
@@ -430,8 +439,16 @@ contains
       enddo
     endif
 
+    if (ifreesurface) then 
+       call momentum_gravity(dux1, duy1, duz1, rho1(:,:,:,1), one / Fr**2)
+    endif
+
     !! Additional forcing
     call momentum_forcing(dux1, duy1, duz1, rho1, ux1, uy1, uz1, phi1)
+
+    if (ifreesurface) then
+        call surface_tension_force(dux1, duy1, duz1, rho1, phi1(:,:,:,ilevelset))
+    endif
 
     !! Turbine forcing
     if (iturbine.eq.1) then
@@ -449,6 +466,12 @@ contains
        call tbl_tripping(duy1(:,:,:,1),td1)
        if (nrank == 0) print *,'TRIPPING!!'
     endif
+
+    if (ifreesurface) then
+      dux1(:,:,:,1) = dux1(:,:,:,1) / rho1(:,:,:,1)
+      duy1(:,:,:,1) = duy1(:,:,:,1) / rho1(:,:,:,1)
+      duz1(:,:,:,1) = duz1(:,:,:,1) / rho1(:,:,:,1)
+   endif
 
   end subroutine momentum_rhs_eq
   !############################################################################
@@ -509,7 +532,11 @@ contains
     call derx (ta1,ux1,di1,sx,ffx,fsx,fwx,xsize(1),xsize(2),xsize(3),0)
     call derx (tb1,uy1,di1,sx,ffxp,fsxp,fwxp,xsize(1),xsize(2),xsize(3),1)
     call derx (tc1,uz1,di1,sx,ffxp,fsxp,fwxp,xsize(1),xsize(2),xsize(3),1)
-    call derx (td1,mu1,di1,sx,ffxp,fsxp,fwxp,xsize(1),xsize(2),xsize(3),1)
+    if (.not.ifreesurface) then
+       call derx (td1,mu1,di1,sx,ffxp,fsxp,fwxp,xsize(1),xsize(2),xsize(3),1)
+    else
+       call weno5(td1, mu1, ux1, 1, nclxS1, nclxSn, xsize(1), xsize(2), xsize(3), 1)
+    endif
     ta1(:,:,:) = two * ta1(:,:,:) - (two * one_third) * tg1(:,:,:)
 
     ta1(:,:,:) = td1(:,:,:) * ta1(:,:,:)
@@ -527,7 +554,11 @@ contains
     te2(:,:,:) = two * te2(:,:,:) - (two * one_third) * th2(:,:,:)
 
     call transpose_x_to_y(mu1, ti2)
-    call dery (th2,ti2,di2,sy,ffyp,fsyp,fwyp,ppy,ysize(1),ysize(2),ysize(3),1)
+    if (.not.ifreesurface) then
+       call dery (th2,ti2,di2,sy,ffyp,fsyp,fwyp,ppy,ysize(1),ysize(2),ysize(3),1)
+    else
+       call weno5(th2, ti2, uy2, 2, nclyS1, nclySn, ysize(1), ysize(2), ysize(3), 1)
+    endif
 
     ta2(:,:,:) = ta2(:,:,:) + th2(:,:,:) * td2(:,:,:)
     tb2(:,:,:) = tb2(:,:,:) + th2(:,:,:) * te2(:,:,:) + tg2(:,:,:) * td2(:,:,:)
@@ -547,7 +578,11 @@ contains
 
     tc3(:,:,:) = tc3(:,:,:) + tg3(:,:,:) * td3(:,:,:) + th3(:,:,:) * te3(:,:,:)
 
-    call derz (th3,ti3,di3,sz,ffzp,fszp,fwzp,zsize(1),zsize(2),zsize(3),1)
+    if (.not.ifreesurface) then
+       call derz (th3,ti3,di3,sz,ffzp,fszp,fwzp,zsize(1),zsize(2),zsize(3),1)
+    else
+       call weno5(th3, ti3, uz3, 3, nclzS1, nclzSn, zsize(1), zsize(2), zsize(3), 1)
+    endif
 
     ta3(:,:,:) = ta3(:,:,:) + th3(:,:,:) * td3(:,:,:)
     tb3(:,:,:) = tb3(:,:,:) + th3(:,:,:) * te3(:,:,:)
@@ -767,7 +802,7 @@ contains
       if (skewsc) call derxS (tc1,ta1,di1,sx,ffxS,fsxS,fwxS,xsize(1),xsize(2),xsize(3),0)
     else
       call derxS (tb1,phi1(:,:,:),di1,sx,ffxS,fsxS,fwxS,xsize(1),xsize(2),xsize(3),0)
-      if (skewsc) call derxS (tc1,ta1,di1,sx,ffxpS,fsxpS,fwxpS,xsize(1),xsize(2),xsize(3),1) 
+      if (skewsc) call derxS (tc1,ta1,di1,sx,ffxpS,fsxpS,fwxpS,xsize(1),xsize(2),xsize(3),1)
     endif
     if (ilmn) then
       tb1(:,:,:) = rho1(:,:,:,1) * ux1(:,:,:) * tb1(:,:,:)
@@ -819,22 +854,22 @@ contains
       if (evensc) then
         call deryS (tc2,td2(:,:,:),di2,sy,ffypS,fsypS,fwypS,ppy,ysize(1),ysize(2),ysize(3),1)
         if (skewsc) call deryS (te2,tb2,di2,sy,ffyS,fsyS,fwyS,ppy,ysize(1),ysize(2),ysize(3),0)
-      else      
+      else
         call deryS (tc2,td2(:,:,:),di2,sy,ffyS,fsyS,fwyS,ppy,ysize(1),ysize(2),ysize(3),0)
         if (skewsc) call deryS (te2,tb2,di2,sy,ffypS,fsypS,fwypS,ppy,ysize(1),ysize(2),ysize(3),1)
-      endif                                                                             
-       
+      endif
+
       if (istret.ne.0) then
-         do k = 1,ysize(3)                                                              
+         do k = 1,ysize(3)
             do j = 1,ysize(2)
                do i = 1,ysize(1)
-                  ta2(i,j,k) = -pp4y(j)*tc2(i,j,k)                    
+                  ta2(i,j,k) = -pp4y(j)*tc2(i,j,k)
                enddo
             enddo
          enddo
       else
          ta2(:,:,:) = zero
-      endif     
+      endif
 
     endif
 
@@ -905,6 +940,85 @@ contains
     endif
 
   endsubroutine scalar_transport_eq
+  !############################################################################
+  !############################################################################
+  subroutine phase_transport_eq(dphi1, rho1, ux1, phi1, iphasefield)
+
+    USE param
+    USE variables
+    USE decomp_2d
+
+    USE var, ONLY : ta1,tb1,tc1,td1,di1, te1, tf1, tg1, th1, ti1
+    USE var, ONLY : uy1, uz1
+    USE var, ONLY : ux2, uz2
+    USE var, ONLY : ux3, uy3
+    USE var, ONLY : rho2,uy2,ta2,tb2,tc2,td2,di2,te2, tf2, tg2, th2, ti2
+    USE var, ONLY : rho3,uz3,ta3,tb3,td3,di3,te3, tf3, tg3, th3, ti3
+    use var, only : dx, dy, dz, dt
+    use var, only : nxmsize, nymsize, nzmsize
+    USE freesurface, ONLY : source_pf
+
+    implicit none
+
+    !! INPUTS
+    real(mytype),intent(in),dimension(xsize(1),xsize(2),xsize(3)) :: ux1
+    real(mytype),intent(in),dimension(xsize(1),xsize(2),xsize(3)) :: phi1
+    real(mytype),intent(in),dimension(xsize(1),xsize(2),xsize(3),nrhotime) :: rho1
+    logical, intent(in) :: iphasefield
+
+    !! OUTPUTS
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),ntime) :: dphi1
+
+    !! LOCALS
+    integer :: i, j, k
+    real(mytype) :: normalmag, eta, sigma0, pec, alpha_pf
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: velmag, sx1, sy1, sz1
+
+    call transpose_x_to_y(phi1(:,:,:),td2(:,:,:))
+    call transpose_y_to_z(td2(:,:,:),td3(:,:,:))
+
+    !X PENCILS
+
+    call weno5(tb1, phi1(:,:,:), ux1, 1, nclxS1, nclxSn, xsize(1), xsize(2), xsize(3), 1)
+
+    tb1(:,:,:) = ux1(:,:,:) * tb1(:,:,:)
+    ta1(:,:,:) = zero
+
+    !Y PENCILS
+
+   call weno5(tb2, td2(:,:,:), uy2, 2, nclyS1, nclySn, ysize(1), ysize(2), ysize(3), 1)
+
+   tb2(:,:,:) = uy2(:,:,:) * tb2(:,:,:)
+   ta2(:,:,:) = zero
+
+    !Z PENCILS
+
+   call weno5(tb3, td3(:,:,:), uz3, 3, nclzS1, nclzSn, zsize(1), zsize(2), zsize(3), 1)
+
+   tb3(:,:,:) = uz3(:,:,:) * tb3(:,:,:)
+   ta3(:,:,:) = zero
+
+
+    call transpose_z_to_y(ta3,tc2)
+    call transpose_z_to_y(tb3,td2)
+
+    !Y PENCILS ADD TERMS
+    tc2 = tc2+ta2
+    td2 = td2+tb2
+
+    call transpose_y_to_x(tc2,tc1)
+    call transpose_y_to_x(td2,td1)
+
+    ta1 = ta1+tc1
+    tb1 = tb1+td1
+
+    sx1(:,:,:) = tb1(:,:,:)
+
+    call source_pf(sx1, rho1, phi1(:,:,:))
+
+    dphi1(:,:,:,1) = -sx1(:,:,:)
+
+  endsubroutine phase_transport_eq
   !############################################################################
   !############################################################################
   subroutine scalar(dphi1, rho1, ux1, uy1, uz1, phi1)
@@ -1087,6 +1201,59 @@ contains
     endif
 
   end subroutine continuity_rhs_eq
+  !############################################################################
+  !############################################################################
+  subroutine update_freesurface(rho1, mu1, levelset1)
+
+    use decomp_2d, only : mytype, xsize
+    use decomp_2d, only : transpose_x_to_y, transpose_y_to_z
+
+    use var, only : ux1, uy1, uz1, uy2, uz2, uz3
+    use var, only : dlevelset1 => dphi1
+    use var, only : nrhotime
+    use var, only : ilevelset
+    use var, only : sc
+    use var, only : dx, dy, dz
+
+    use param, only : itime
+
+    use freesurface, only : update_fluid_properties
+    use time_integrators, only : intt
+
+    implicit none
+
+    !!INOUT
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3), nrhotime) :: rho1
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: levelset1
+
+    !! OUTPUT
+    real(mytype), dimension(xsize(1), xsize(2), xsize(3)), intent(out) :: mu1
+
+    integer :: i, j, k
+
+    if (itime.eq.1) then
+       call transpose_x_to_y(uy1, uy2)
+       call transpose_x_to_y(uz1, uz2)
+       call transpose_y_to_z(uz2, uz3)
+    endif
+
+    call phase_transport_eq(dlevelset1(:,:,:,:,ilevelset), rho1, ux1, levelset1, .true.)
+    call intt(levelset1, dlevelset1(:,:,:,:,ilevelset))
+
+     do k = 1,xsize(3)
+     do j = 1,xsize(2)
+     do i = 1,xsize(1)
+
+       levelset1(i, j, k) = max(levelset1(i, j, k), 0._mytype)
+       levelset1(i, j, k) = min(levelset1(i, j, k), 1._mytype)
+
+     enddo
+     enddo
+     enddo
+
+    call update_fluid_properties(rho1, mu1, levelset1)
+
+  endsubroutine update_freesurface
   !############################################################################
   !############################################################################
 end module transeq

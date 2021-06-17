@@ -64,6 +64,7 @@ subroutine parameter(input_i3d)
        dt, ifirst, ilast, &
        numscalar, iibm, ilmn, &
        ilesmod, iscalar, &
+       ifreesurface, ilevelset, &
        nclx1, nclxn, ncly1, nclyn, nclz1, nclzn, &
        ivisu, ipost, &
        gravx, gravy, gravz, &
@@ -86,9 +87,10 @@ subroutine parameter(input_i3d)
   NAMELIST /LMN/ dens1, dens2, prandtl, ilmn_bound, ivarcoeff, ilmn_solve_temp, &
        massfrac, mol_weight, imultispecies, primary_species, &
        Fr, ibirman_eos
+  NAMELIST /FreeSurf/ dens1, dens2, visc1, visc2
   NAMELIST /ABL/ z_zero, iwallmodel, k_roughness, ustar, dBL, &
        imassconserve, ibuoyancy, iPressureGradient, iCoriolis, CoriolisFreq, &
-       istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, T_top 
+       istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, T_top
   NAMELIST /CASE/ tgv_twod, pfront
   NAMELIST/ALMParam/ialmrestart,filealmrestart,iturboutput,NTurbines,TurbinesPath,NActuatorlines,ActuatorlinesPath,eps_factor,rho_air
   NAMELIST/ADMParam/Ndiscs,ADMcoords,C_T,aind,iturboutput,rho_air
@@ -130,12 +132,12 @@ subroutine parameter(input_i3d)
      allocate(xld(nvol), xrd(nvol), yld(nvol), yud(nvol))
      read(10, nml=ForceCVs); rewind(10)
   endif
-  
+
   !! Set Scalar BCs same as fluid (may be overridden) [DEFAULT]
   nclxS1 = nclx1; nclxSn = nclxn
   nclyS1 = ncly1; nclySn = nclyn
   nclzS1 = nclz1; nclzSn = nclzn
-  
+
   if (numscalar.ne.0) then
      iscalar = 1
 
@@ -262,12 +264,28 @@ subroutine parameter(input_i3d)
     fcpg = two/yly * (re/re_cent)**2
   end if
 
-  if (ilmn) then
-     if (ivarcoeff) then
-        npress = 2 !! Need current pressure and previous iterate
+  !if (ilmn) then
+     !if (ivarcoeff) then
+        !npress = 2 !! Need current pressure and previous iterate
+     !else
+        !npress = 1
+     !endif
+  !endif
+
+  if ((ilmn.and.ivarcoeff).or.ifreesurface) then
+    npress = 3 !! Need current pressure and previous iterate
+  else
+    npress = 1
+  endif
+
+  if (ifreesurface) then
+     if (ri(ilevelset).gt.zero) then
+        Fr = sqrt(one / ri(ilevelset))
      else
-        npress = 1
+        Fr = zero
      endif
+  else
+     ilevelset = -1
   endif
 
   if (iimplicit.ne.0) then
@@ -332,6 +350,8 @@ subroutine parameter(input_i3d)
         print *,'Atmospheric boundary layer'
      elseif (itype.eq.itype_uniform) then
         print *,'Uniform flow'
+     elseif (itype.eq.itype_rt) then
+        print *,'Rayleigh–Taylor instability'
      else
         print *,'Unknown itype: ', itype
         stop
@@ -610,6 +630,10 @@ subroutine parameter_defaults()
   ibirman_eos = .FALSE.
 
   primary_species = -1
+
+  !! Free-surface stuff
+  ifreesurface = .FALSE.
+  ilevelset = -1
 
   !! Channel
   icpg = 0

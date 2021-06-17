@@ -302,7 +302,8 @@ module param
        itype_jet = 8, &
        itype_tbl = 9, &
        itype_abl = 10, &
-       itype_uniform = 11
+       itype_uniform = 11, &
+       itype_rt = 12
 
   integer :: cont_phi,itr,itime,itest,iprocessing
   integer :: ifft,istret,iforc_entree,iturb
@@ -319,6 +320,7 @@ module param
   real(mytype) :: dt,re,xnu,init_noise,inflow_noise,u1,u2,angle,anglex,angley
   real(mytype) :: wrotation,ro
   real(mytype) :: dens1, dens2
+  real(mytype) :: visc1, visc2
   real(mytype) :: C_filter
   character(len=100) :: inflowpath
 
@@ -368,6 +370,11 @@ module param
 
   logical :: ibirman_eos
 
+  !! Free surface
+  logical :: ifreesurface
+  integer :: ilevelset
+  !logical :: ls_reinit
+
   !! ABL
   integer :: iwallmodel, iPressureGradient, imassconserve, ibuoyancy, iStrat, iCoriolis, idamping, iheight, itherm
   real(mytype) :: z_zero, k_roughness, u_shear, ustar, dBL, CoriolisFreq, TempRate, TempFlux, gravv, T_wall, T_top
@@ -389,7 +396,7 @@ module param
   character, dimension(100) :: TurbinesPath*80, ActuatorlinesPath*80
   character(len=100) :: filealmrestart
   real(mytype) :: eps_factor ! Smoothing factor
-  
+
   !! Case-specific variables
   logical :: tgv_twod
 

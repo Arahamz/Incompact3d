@@ -35,7 +35,7 @@ program xcompact3d
   use var
   use case
 
-  use transeq, only : calculate_transeq_rhs
+  use transeq, only : calculate_transeq_rhs, update_freesurface
   use time_integrators, only : int_time
   use navier, only : velocity_to_momentum, momentum_to_velocity, pre_correc, &
        calc_divu_constraint, solve_poisson, cor_vel
@@ -66,6 +66,11 @@ program xcompact3d
 
         call set_fluid_properties(rho1,mu1)
         call boundary_conditions(rho1,ux1,uy1,uz1,phi1,ep1)
+
+        if (ifreesurface) then
+           call update_freesurface(rho1, mu1, phi1(:,:,:,ilevelset))
+        endif
+
         call calculate_transeq_rhs(drho1,dux1,duy1,duz1,dphi1,rho1,ux1,uy1,uz1,ep1,phi1,divu3)
 
         !! XXX N.B. from this point, X-pencil velocity arrays contain momentum.
@@ -248,7 +253,7 @@ subroutine finalise_xcompact3d()
   implicit none
 
   integer :: ierr
-  
+
   if (itype==2) then
      if(nrank.eq.0)then
         close(42)
@@ -259,7 +264,7 @@ subroutine finalise_xcompact3d()
         close(38)
      endif
   endif
-  
+
   call simu_stats(4)
   call decomp_2d_finalize
   CALL MPI_FINALIZE(ierr)
