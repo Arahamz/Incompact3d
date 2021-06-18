@@ -164,7 +164,7 @@ contains
     call alloc_x(td1);call alloc_x(te1);call alloc_x(tf1)
     call alloc_x(tg1);call alloc_x(th1);call alloc_x(ti1)
     call alloc_x(di1);call alloc_x(ep1)
-    if (ilmn) then
+    if (ilmn.or.ifreesurface) then
       call alloc_x(mu1)
       mu1(:,:,:) = one
     endif
@@ -273,7 +273,7 @@ contains
     allocate(dipp2(ph1%yst(1):ph1%yen(1),ysize(2),ysize(3)))
     allocate(upi2(ph1%yst(1):ph1%yen(1),nymsize,ysize(3)))
     allocate(duydypi2(ph1%yst(1):ph1%yen(1),nymsize,ysize(3)))
-    if (ilmn) then
+    if (ilmn.or.ifreesurface) then
       call alloc_y(mu2)
       mu2(:,:,:) = one
     endif
@@ -292,7 +292,7 @@ contains
     allocate(duxydxyp3(ph1%zst(1):ph1%zen(1),ph1%zst(2):ph1%zen(2),zsize(3)))
     allocate(uzp3(ph1%zst(1):ph1%zen(1),ph1%zst(2):ph1%zen(2),zsize(3)))
     allocate(dipp3(ph1%zst(1):ph1%zen(1),ph1%zst(2):ph1%zen(2),zsize(3)))
-    if (ilmn) then
+    if (ilmn.or.ifreesurface) then
       call alloc_z(mu3)
       mu3(:,:,:) = one
     endif

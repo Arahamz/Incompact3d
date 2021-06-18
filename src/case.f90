@@ -354,6 +354,10 @@ contains
 
        call postprocess_uniform (ux, uy, uz, ep)
 
+   elseif (itype.eq.itype_rt) then
+
+       call postprocess_rt (ux, uy, uz, phi, ep)
+
     endif
 
     if (iforces.eq.1) then
