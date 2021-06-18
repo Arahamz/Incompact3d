@@ -40,6 +40,7 @@ module var
   ! define all major arrays here
   real(mytype), save, allocatable, dimension(:,:,:) :: ux1, ux2, ux3, po3, dv3
   real(mytype), save, allocatable, dimension(:,:,:,:) :: pp3
+  real(mytype), save, allocatable, dimension(:,:,:) :: qq3
   real(mytype), save, allocatable, dimension(:,:,:) :: uy1, uy2, uy3
   real(mytype), save, allocatable, dimension(:,:,:) :: uz1, uz2, uz3
   real(mytype), save, allocatable, dimension(:,:,:,:) :: rho1, drho1
@@ -300,6 +301,7 @@ contains
     !   allocate (dv3(ph%zst(1):ph%zen(1),ph%zst(2):ph%zen(2),ph%zst(3):ph%zen(3)))
     !   allocate (po3(ph%zst(1):ph%zen(1),ph%zst(2):ph%zen(2),ph%zst(3):ph%zen(3)))
     allocate(pp3(ph1%zst(1):ph1%zen(1), ph1%zst(2):ph1%zen(2), nzmsize, npress))
+    allocate(qq3(ph1%zst(1):ph1%zen(1), ph1%zst(2):ph1%zen(2), nzmsize))
     call alloc_z(dv3,ph,.true.)
     call alloc_z(po3,ph,.true.)
 
