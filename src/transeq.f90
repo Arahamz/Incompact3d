@@ -1047,7 +1047,7 @@ contains
     !!=====================================================================
     do is = 1, numscalar
 
-       if (is.ne.primary_species) then
+       if ((is.ne.primary_species).and.(is.ne.ilevelset)) then
           !! For mass fractions enforce primary species Y_p = 1 - sum_s Y_s
           !! So don't solve a transport equation
           call scalar_transport_eq(dphi1(:,:,:,:,is), rho1, ux1, uy1, uz1, phi1(:,:,:,is), sc(is), is_even=sc_even(is), is_skew=sc_skew(is))
