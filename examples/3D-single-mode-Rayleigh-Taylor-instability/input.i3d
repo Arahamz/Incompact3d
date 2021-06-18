@@ -59,7 +59,7 @@ ilevelset=1           ! Which scalar is the level set?
 ivisu=1               ! Store snapshots
 ipost=1               ! Do online postprocessing
 
-ipdelta = .true.
+!ipdelta = .true.
 
 /End
 
@@ -96,7 +96,7 @@ nvisu = 1             ! Size for visualisation collection
 &Statistics
 !=================
 
-spinup_time = 0.      ! Time after which statistics are collected (in seconds)
+spinup_time = 0      ! Time after which statistics are collected (in seconds)
 nstat = 1             ! Size arrays for statistic collection
 
 /End

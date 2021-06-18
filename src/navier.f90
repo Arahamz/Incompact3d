@@ -51,16 +51,26 @@ contains
 
     USE decomp_2d, ONLY : mytype, xsize, zsize, ph1
     USE decomp_2d_poisson, ONLY : poisson
+    USE var, ONLY : itr, itime, ifirst
     USE var, ONLY : nzmsize
-    USE var, ONLY : dv3
+    USE var, ONLY : dv3, po3
+    USE var, ONLY : zero, one, two
     USE param, ONLY : ntime, nrhotime, npress
-    USE param, ONLY : ilmn, ivarcoeff, one
+    USE param, ONLY : ilmn, ivarcoeff, ifreesurface
 
+    USE var, ONLY : uxhat1 => td1, uyhat1 => te1, uzhat1 => tf1, tg1
+    USE param, ONLY : gdt
+
+    !USE div, ONLY : divergence
+
+    USE param, ONLY : itr
+
+    use param, only : dens1, dens2
 
     IMPLICIT NONE
 
     !! Inputs
-    REAL(mytype), DIMENSION(xsize(1), xsize(2), xsize(3)), INTENT(IN) :: ux1, uy1, uz1
+    REAL(mytype), DIMENSION(xsize(1), xsize(2), xsize(3)) :: ux1, uy1, uz1
     REAL(mytype), DIMENSION(xsize(1), xsize(2), xsize(3)), INTENT(IN) :: ep1
     REAL(mytype), DIMENSION(xsize(1), xsize(2), xsize(3), nrhotime), INTENT(IN) :: rho1
     REAL(mytype), DIMENSION(xsize(1), xsize(2), xsize(3), ntime), INTENT(IN) :: drho1
@@ -71,17 +81,17 @@ contains
     REAL(mytype), DIMENSION(xsize(1), xsize(2), xsize(3)) :: px1, py1, pz1
 
     !! Locals
-    INTEGER :: nlock, poissiter
+    INTEGER :: nlock, poissiter, piter
     LOGICAL :: converged
-    REAL(mytype) :: atol, rtol, rho0, divup3norm
+    REAL(mytype) :: atol, rtol
+    REAL(mytype) :: divup3norm
+    REAL(mytype) :: rho0
 
-    nlock = 1 !! Corresponds to computing div(u*)
     converged = .FALSE.
     poissiter = 0
-    rho0 = one
 
-    atol = 1.0e-14_mytype !! Absolute tolerance for Poisson solver
-    rtol = 1.0e-14_mytype !! Relative tolerance for Poisson solver
+    atol = 1.0e-9_mytype !! Absolute tolerance for Poisson solver
+    rtol = 1.0e-9_mytype !! Relative tolerance for Poisson solver
 
     IF (ilmn.AND.ivarcoeff) THEN
        !! Variable-coefficient Poisson solver works on div(u), not div(rho u)
@@ -89,40 +99,69 @@ contains
        CALL momentum_to_velocity(rho1, ux1, uy1, uz1)
     ENDIF
 
-    CALL divergence(pp3(:,:,:,1),rho1,ux1,uy1,uz1,ep1,drho1,divu3,nlock)
-    IF (ilmn.AND.ivarcoeff) THEN
-       dv3(:,:,:) = pp3(:,:,:,1)
+    rho0 = min(dens1, dens2)
+
+    ux1(:,:,:) = rho0 * ux1(:,:,:)
+    uy1(:,:,:) = rho0 * uy1(:,:,:)
+    uz1(:,:,:) = rho0 * uz1(:,:,:)
+
+    uxhat1(:,:,:) = ux1(:,:,:)
+    uyhat1(:,:,:) = uy1(:,:,:)
+    uzhat1(:,:,:) = uz1(:,:,:)
+
+    IF ((ilmn.AND.ivarcoeff).OR.ifreesurface) THEN
+       IF ((itime.GT.(ifirst + 1)).AND.(itr.EQ.1)) THEN
+          !! Extrapolate pressure
+          pp3(:,:,:,1) = two * pp3(:,:,:,2) - pp3(:,:,:,3)
+
+          CALL gradp(px1,py1,pz1,pp3(:,:,:,1))
+       ENDIF
+
+       !! Store previous pressure field
+       pp3(:,:,:,3) = pp3(:,:,:,2)
     ENDIF
 
     DO WHILE(.NOT.converged)
-       IF (ivarcoeff) THEN
+       !! Compute intermediate velocity field using current pressure field
+       uxhat1(:,:,:) = ux1(:,:,:) - (rho0 / rho1(:,:,:,1) - one) * px1(:,:,:)
+       uyhat1(:,:,:) = uy1(:,:,:) - (rho0 / rho1(:,:,:,1) - one) * py1(:,:,:)
+       uzhat1(:,:,:) = uz1(:,:,:) - (rho0 / rho1(:,:,:,1) - one) * pz1(:,:,:)
 
-          !! Test convergence
+       !! Set BCs on the intermediate velocity field
+       tg1(:,:,:) = one
+       call pre_correc(uxhat1,uyhat1,uzhat1,tg1,ep1)
+
+       !! Compute div(U*)
+       nlock = 1 !! Corresponds to computing div(u*)
+       CALL divergence(pp3(:,:,:,1),rho1,uxhat1,uyhat1,uzhat1,ep1,drho1,divu3,nlock)
+       dv3(:,:,:) = pp3(:,:,:,1) !! Store div(u*) in dv3
+
+       !! Solve Poisson equation
+       CALL poisson(pp3(:,:,:,1))
+
+       if (ivarcoeff.or.ifreesurface) then
           CALL test_varcoeff(converged, divup3norm, pp3, dv3, atol, rtol, poissiter)
+          pp3(:,:,:,2) = pp3(:,:,:,1)
+       endif
 
-          IF (.NOT.converged) THEN
-             !! Evaluate additional RHS terms
-             CALL calc_varcoeff_rhs(pp3(:,:,:,1), rho1, px1, py1, pz1, dv3, drho1, ep1, divu3, rho0, &
-                  poissiter)
-          ENDIF
-       ENDIF
+       !! Need to update pressure gradient here for varcoeff
+       CALL gradp(px1,py1,pz1,pp3(:,:,:,1))
 
-       IF (.NOT.converged) THEN
-          CALL poisson(pp3(:,:,:,1))
-
-          !! Need to update pressure gradient here for varcoeff
-          CALL gradp(px1,py1,pz1,pp3(:,:,:,1))
-
-          IF ((.NOT.ilmn).OR.(.NOT.ivarcoeff)) THEN
-             !! Once-through solver
-             !! - Incompressible flow
-             !! - LMN - constant-coefficient solver
-             converged = .TRUE.
-          ENDIF
+       IF ((((.NOT.ilmn).AND.(.NOT.ivarcoeff)).AND.(.NOT.ifreesurface)) &
+            .OR. (ifreesurface.and.(itime.gt.(ifirst + 1)))) THEN
+          !! Once-through solver
+          !! - Incompressible flow
+          !! - LMN - constant-coefficient solver
+          converged = .TRUE.
        ENDIF
 
        poissiter = poissiter + 1
     ENDDO
+
+    !! Set velocity to intermediate velocity field
+    ux1(:,:,:) = uxhat1(:,:,:)
+    uy1(:,:,:) = uyhat1(:,:,:)
+    uz1(:,:,:) = uzhat1(:,:,:)
 
     IF (ilmn.AND.ivarcoeff) THEN
        !! Variable-coefficient Poisson solver works on div(u), not div(rho u)
@@ -196,20 +235,41 @@ contains
   ! output : ux,uy,uz
   !written by SL 2018
   !############################################################################
-  subroutine cor_vel (ux,uy,uz,px,py,pz)
+  subroutine cor_vel (rho,ux,uy,uz,px,py,pz)
+
+    USE MPI
 
     USE decomp_2d
     USE variables
     USE param
 
+    USE var, only : nzmsize
+    USE var, only : pp3
+
     implicit none
 
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux,uy,uz
-    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(in) :: px,py,pz
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)),intent(inout) :: px,py,pz
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),nrhotime),intent(in) :: rho
 
-    ux(:,:,:)=ux(:,:,:)-px(:,:,:)
-    uy(:,:,:)=uy(:,:,:)-py(:,:,:)
-    uz(:,:,:)=uz(:,:,:)-pz(:,:,:)
+    integer :: ierr
+    real(mytype) :: rhomin, rho0
+
+    if (.not.ifreesurface) then
+       ux(:,:,:)=ux(:,:,:)-px(:,:,:)
+       uy(:,:,:)=uy(:,:,:)-py(:,:,:)
+       uz(:,:,:)=uz(:,:,:)-pz(:,:,:)
+    else
+       !! Compute rho0
+       rhomin = minval(rho)
+       call MPI_ALLREDUCE(rhomin,rho0,1,real_type,MPI_MIN,MPI_COMM_WORLD,ierr)
+
+       !! First correct according to new pressure gradient
+       ux(:,:,:) = (ux(:,:,:) - px(:,:,:)) / rho0
+       uy(:,:,:) = (uy(:,:,:) - py(:,:,:)) / rho0
+       uz(:,:,:) = (uz(:,:,:) - pz(:,:,:)) / rho0
+
+    endif
 
     return
   end subroutine cor_vel
@@ -463,7 +523,7 @@ contains
   end subroutine gradp
   !############################################################################
   !############################################################################
-  subroutine pre_correc(ux,uy,uz,ep)
+  subroutine pre_correc(ux,uy,uz,ep,invrho)
 
     USE decomp_2d
     USE variables
@@ -471,11 +531,12 @@ contains
     USE var
     USE MPI
     USE TBL, ONLY:tbl_flrt
-    use ibm, only : corgp_ibm, body
+    USE IBM, ONLY : corgp_ibm, body
 
     implicit none
 
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: ux,uy,uz,ep
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3)), intent(in) :: invrho
     integer :: i,j,k,is
     real(mytype) :: ut,ut1,utt,ut11
 
@@ -487,7 +548,7 @@ contains
 
     !********NCLX==2*************************************
     !we are in X pencils:
-    if ((itype.eq.itype_channel.or.itype.eq.itype_uniform).and.(nclx1==2.and.nclxn==2)) then
+    if ((itype.eq.itype_channel).and.(nclx1==2.and.nclxn==2)) then
 
        !Computatation of the flow rate Inflow/Outflow
        ut1=zero
@@ -515,13 +576,11 @@ contains
 
     endif
 
-    if (itype.eq.itype_tbl) call tbl_flrt(ux,uy,uz)
-
     if (nclx1==2) then
        do k=1,xsize(3)
           do j=1,xsize(2)
-             dpdyx1(j,k)=dpdyx1(j,k)*gdt(itr)
-             dpdzx1(j,k)=dpdzx1(j,k)*gdt(itr)
+             dpdyx1(j,k)=invrho(1,j,k)*dpdyx1(j,k)*gdt(itr)
+             dpdzx1(j,k)=invrho(1,j,k)*dpdzx1(j,k)*gdt(itr)
           enddo
        enddo
        do k=1,xsize(3)
@@ -535,8 +594,8 @@ contains
     if (nclxn==2) then
        do k=1,xsize(3)
           do j=1,xsize(2)
-             dpdyxn(j,k)=dpdyxn(j,k)*gdt(itr)
-             dpdzxn(j,k)=dpdzxn(j,k)*gdt(itr)
+             dpdyxn(j,k)=invrho(nx,j,k)*dpdyxn(j,k)*gdt(itr)
+             dpdzxn(j,k)=invrho(nx,j,k)*dpdzxn(j,k)*gdt(itr)
           enddo
        enddo
        do k=1,xsize(3)
@@ -570,8 +629,8 @@ contains
        if (xstart(2)==1) then
           do k=1,xsize(3)
              do i=1,xsize(1)
-                dpdxy1(i,k)=dpdxy1(i,k)*gdt(itr)
-                dpdzy1(i,k)=dpdzy1(i,k)*gdt(itr)
+                dpdxy1(i,k)=invrho(i,1,k)*dpdxy1(i,k)*gdt(itr)
+                dpdzy1(i,k)=invrho(i,1,k)*dpdzy1(i,k)*gdt(itr)
              enddo
           enddo
           do k=1,xsize(3)
@@ -588,8 +647,8 @@ contains
        if (xend(2)==ny) then
           do k=1,xsize(3)
              do i=1,xsize(1)
-                dpdxyn(i,k)=dpdxyn(i,k)*gdt(itr)
-                dpdzyn(i,k)=dpdzyn(i,k)*gdt(itr)
+                dpdxyn(i,k)=invrho(i,xsize(2),k)*dpdxyn(i,k)*gdt(itr)
+                dpdzyn(i,k)=invrho(i,xsize(2),k)*dpdzyn(i,k)*gdt(itr)
              enddo
           enddo
        endif
@@ -639,8 +698,8 @@ contains
        if (xstart(3)==1) then
           do j=1,xsize(2)
              do i=1,xsize(1)
-                dpdxz1(i,j)=dpdxz1(i,j)*gdt(itr)
-                dpdyz1(i,j)=dpdyz1(i,j)*gdt(itr)
+                dpdxz1(i,j)=invrho(i,j,1)*dpdxz1(i,j)*gdt(itr)
+                dpdyz1(i,j)=invrho(i,j,1)*dpdyz1(i,j)*gdt(itr)
              enddo
           enddo
           do j=1,xsize(2)
@@ -657,8 +716,8 @@ contains
        if (xend(3)==nz) then
           do j=1,xsize(2)
              do i=1,xsize(1)
-                dpdxzn(i,j)=dpdxzn(i,j)*gdt(itr)
-                dpdyzn(i,j)=dpdyzn(i,j)*gdt(itr)
+                dpdxzn(i,j)=invrho(i,j,xsize(3))*dpdxzn(i,j)*gdt(itr)
+                dpdyzn(i,j)=invrho(i,j,xsize(3))*dpdyzn(i,j)*gdt(itr)
              enddo
           enddo
           do j=1,xsize(2)

@@ -439,7 +439,7 @@ contains
       enddo
     endif
 
-    if (ifreesurface) then 
+    if (ifreesurface) then
        call momentum_gravity(dux1, duy1, duz1, rho1(:,:,:,1), one / Fr**2)
     endif
 
