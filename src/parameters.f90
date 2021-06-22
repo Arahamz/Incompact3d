@@ -87,7 +87,7 @@ subroutine parameter(input_i3d)
   NAMELIST /LMN/ dens1, dens2, prandtl, ilmn_bound, ivarcoeff, ilmn_solve_temp, &
        massfrac, mol_weight, imultispecies, primary_species, &
        Fr, ibirman_eos
-  NAMELIST /FreeSurf/ dens1, dens2, visc1, visc2
+  NAMELIST /FreeSurf/ dens1, dens2, visc1, visc2, sigma
   NAMELIST /ABL/ z_zero, iwallmodel, k_roughness, ustar, dBL, &
        imassconserve, ibuoyancy, iPressureGradient, iCoriolis, CoriolisFreq, &
        istrat, idamping, iheight, TempRate, TempFlux, itherm, gravv, UG, T_wall, T_top
@@ -198,6 +198,10 @@ subroutine parameter(input_i3d)
   endif
   if (numscalar.ne.0) then
      read(10, nml=ScalarParam); rewind(10)
+  endif
+
+  if (ifreesurface) then
+     read(10, nml=FreeSurf); rewind(10)
   endif
   ! !! These are the 'optional'/model parameters
   ! read(10, nml=ScalarParam)

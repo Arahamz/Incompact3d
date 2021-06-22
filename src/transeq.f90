@@ -215,7 +215,9 @@ contains
     if (ilmn.or.ifreesurface) then
        call transpose_y_to_z(rho2,rho3)
        call transpose_y_to_z(mu2,mu3)
+    endif
 
+   if (ilmn) then
        td3(:,:,:) = rho3(:,:,:) * ux3(:,:,:) * uz3(:,:,:)
        te3(:,:,:) = rho3(:,:,:) * uy3(:,:,:) * uz3(:,:,:)
        tf3(:,:,:) = rho3(:,:,:) * uz3(:,:,:) * uz3(:,:,:)
@@ -971,7 +973,6 @@ contains
 
     !! LOCALS
     integer :: i, j, k
-    real(mytype) :: normalmag, eta, sigma0, pec, alpha_pf
     real(mytype),dimension(xsize(1),xsize(2),xsize(3)) :: velmag, sx1, sy1, sz1
 
     call transpose_x_to_y(phi1(:,:,:),td2(:,:,:))
@@ -1209,13 +1210,13 @@ contains
     use decomp_2d, only : transpose_x_to_y, transpose_y_to_z
 
     use var, only : ux1, uy1, uz1, uy2, uz2, uz3
-    use var, only : dlevelset1 => dphi1
+
     use var, only : nrhotime
     use var, only : ilevelset
     use var, only : sc
     use var, only : dx, dy, dz
 
-    use param, only : itime
+    use param, only : itime, ntime
 
     use freesurface, only : update_fluid_properties
     use time_integrators, only : intt
@@ -1229,16 +1230,17 @@ contains
     !! OUTPUT
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)), intent(out) :: mu1
 
+    real(mytype),dimension(xsize(1),xsize(2),xsize(3),ntime) :: dphi1
+
     integer :: i, j, k
 
-    if (itime.eq.1) then
-       call transpose_x_to_y(uy1, uy2)
-       call transpose_x_to_y(uz1, uz2)
-       call transpose_y_to_z(uz2, uz3)
-    endif
 
-    call phase_transport_eq(dlevelset1(:,:,:,:,ilevelset), rho1, ux1, levelset1, .true.)
-    call intt(levelset1, dlevelset1(:,:,:,:,ilevelset))
+    call transpose_x_to_y(uy1, uy2)
+    call transpose_x_to_y(uz1, uz2)
+    call transpose_y_to_z(uz2, uz3)
+
+    call phase_transport_eq(dphi1(:,:,:,1), rho1, ux1, levelset1, .true.)
+    call intt(levelset1, dphi1(:,:,:,1))
 
      do k = 1,xsize(3)
      do j = 1,xsize(2)

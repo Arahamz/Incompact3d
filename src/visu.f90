@@ -87,7 +87,7 @@ contains
     use decomp_2d, only : fine_to_coarsev
     use decomp_2d_io, only : decomp_2d_write_one
 
-    use param, only : ivisu, ioutput, nrhotime, ilmn, iscalar, iibm, istret
+    use param, only : ivisu, ioutput, nrhotime, ilmn, iscalar, iibm, istret, ifreesurface
     use param, only : xlx, yly, zlz
 
     use variables, only : derx, dery, derz
@@ -192,7 +192,7 @@ contains
     !###################################################################
     !! LMN - write out density
     !###################################################################
-    if (ilmn) then
+    if (ilmn.or.ifreesurface) then
       uvisu=0.
       call fine_to_coarsev(1,rho1(:,:,:,1),uvisu)
 995     format('./data/rho',I5.5)

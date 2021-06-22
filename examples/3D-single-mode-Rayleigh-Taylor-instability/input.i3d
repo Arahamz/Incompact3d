@@ -127,6 +127,7 @@ dens1 = 0.33333333
 dens2 = 1.
 visc1 = 1.
 visc2 = 1.
+sigma = 0.00001
 
 
 /End

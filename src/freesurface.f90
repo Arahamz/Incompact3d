@@ -23,27 +23,9 @@ contains
   subroutine update_fluid_properties(rho1, mu1, levelset1)
 
     use decomp_2d, only : mytype, xsize, ysize, zsize
-    use var, only : half, one, two, three, pi, ten, sixteen
-    use var, only : dx, dy, dz
-    use var, only : numscalar
-    use param, only : nrhotime, ilevelset, xlx
+    use var, only : half, one!
+    use param, only : nrhotime!
     use param, only : dens1, dens2, visc1, visc2
-    use var, only : nclx1, ncly1, nclz1, nclxn, nclyn, nclzn
-    use var, only : nclxS1, nclyS1, nclzS1, nclxSn, nclySn, nclzSn
-
-    use var, only : lsp1 => pgy1, lspv21 => pp1
-    use var, only : lsp12 => uyp2, lsp2 => upi2, lspv32 => pp2, lspv2 => ppi2
-    use var, only : lsp23 => uzp3, lsp3 => po3, lspv3 => ppi3, prop3 => dv3
-
-    use var, only : di1, sx, cifxp6, cisxp6, ciwxp6, nxmsize
-    use var, only : dipp2, sy, cifyp6, cisyp6, ciwyp6, nymsize
-    use var, only : dipp3, sz, cifzp6, ciszp6, ciwzp6, nzmsize
-    use var, only : dip3, cifip6z, cisip6z, ciwip6z, cifz6, cisz6, ciwz6
-    use var, only : dip2, cifip6y, cisip6y, ciwip6y, cify6, cisy6, ciwy6
-    use var, only : cifip6, cisip6, ciwip6, cifx6, cisx6, ciwx6
-    use decomp_2d, only : transpose_x_to_y, transpose_y_to_z, transpose_z_to_y, transpose_y_to_x
-
-    use var, only : ph1, ph2, ph3, ph4
 
     implicit none
 
@@ -54,14 +36,9 @@ contains
     real(mytype), dimension(xsize(1), xsize(2), xsize(3), nrhotime) :: rho1
     real(mytype), dimension(xsize(1), xsize(2), xsize(3)) :: mu1
 
-    !! Local
-    integer :: i, j, k
+    rho1(:,:,:,1) = levelset1(:, :, :)*dens1 + ((one-levelset1(:, :, :))*dens2)
 
-
-
-       rho1(:,:,:,1) = levelset1(:, :, :)*dens1 + ((one-levelset1(:, :, :))*dens2)
-
-       mu1(:,:,:) = levelset1(:, :, :)*visc1 + ((one-levelset1(:, :, :))*visc2)
+    mu1(:,:,:) = levelset1(:, :, :)*visc1 + ((one-levelset1(:, :, :))*visc2)
 
 
   endsubroutine update_fluid_properties
@@ -94,7 +71,7 @@ contains
     use param, only : nclx1, ncly1, nclz1
     use param, only : dx, dy, dz, xlx, yly, zlz
     use param, only : nrhotime
-    use param, only : dens1, dens2
+    use param, only : dens1, dens2, sigma
     use param, only : itime, ifirst, ntime
     use param, only : six
 
@@ -129,15 +106,12 @@ contains
     real(mytype) :: normmag
     integer :: nlock
     integer :: i, j, k
-    real(mytype) :: sigma ! Surface tension coefficient
     real(mytype) :: x, y, z
     real(mytype) :: ddelta, eta, alpha_pf, rhomean
 
-    sigma = 0.00001_mytype
     eta = xlx/(xsize(1) - one)
     alpha_pf = six*sqrt(two)
     rhomean = (dens1 + dens2) / two
-
 
     if (itime.eq.ifirst) then
        call alloc_x(nx1); call alloc_x(ny1); call alloc_x(nz1)

@@ -321,6 +321,7 @@ module param
   real(mytype) :: wrotation,ro
   real(mytype) :: dens1, dens2
   real(mytype) :: visc1, visc2
+  real(mytype) :: sigma
   real(mytype) :: C_filter
   character(len=100) :: inflowpath
 

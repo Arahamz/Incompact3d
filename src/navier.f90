@@ -90,8 +90,8 @@ contains
     converged = .FALSE.
     poissiter = 0
 
-    atol = 1.0e-9_mytype !! Absolute tolerance for Poisson solver
-    rtol = 1.0e-9_mytype !! Relative tolerance for Poisson solver
+    atol = 1.0e-14_mytype !! Absolute tolerance for Poisson solver
+    rtol = 1.0e-14_mytype !! Relative tolerance for Poisson solver
 
     IF (ilmn.AND.ivarcoeff) THEN
        !! Variable-coefficient Poisson solver works on div(u), not div(rho u)
@@ -129,7 +129,7 @@ contains
 
        !! Set BCs on the intermediate velocity field
        tg1(:,:,:) = one
-       call pre_correc(uxhat1,uyhat1,uzhat1,tg1,ep1)
+       call pre_correc(uxhat1,uyhat1,uzhat1,ep1,tg1)
 
        !! Compute div(U*)
        nlock = 1 !! Corresponds to computing div(u*)
